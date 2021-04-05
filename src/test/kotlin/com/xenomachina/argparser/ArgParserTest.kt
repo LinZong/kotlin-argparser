@@ -29,6 +29,71 @@ import java.io.File
 import java.io.StringWriter
 
 class ArgParserTest : FunSpec({
+
+    test("Skip unrecognized args") {
+        //        val parser = parserOf(skippingUnrecognizedArgs = true)
+
+        class Args(parser: ArgParser) {
+            val init by parser.flagging(TEST_HELP)
+            val name by parser.storing(TEST_HELP)
+        }
+
+        val args = Args(parserOf("--name", "hello,world", "--init", "--spring.profiles.active=staging","-e", skippingUnrecognizedArgs = true))
+        args.init shouldBe true
+        args.name shouldBe "hello,world"
+
+        class Args2(parser: ArgParser) {
+            val xyz by parser.option<MutableList<String>>(
+                "--xray", "--yellow", "--zaphod",
+                argNames = oneArgName,
+                help = TEST_HELP
+            ) {
+                value.orElse { mutableListOf<String>() }.apply {
+                    add("$optionName:${arguments.first()}")
+                }
+            }
+        }
+
+        // Test with value as separate arg
+        Args2(
+            parserOf("--xray", "0", "--yellow", "1", "--ok", "--zaphod", "2", "--zaphod", "3", "--yellow", "4", skippingUnrecognizedArgs = true)
+        ).xyz shouldBe listOf("--xray:0", "--yellow:1", "--zaphod:2", "--zaphod:3", "--yellow:4")
+        // here can ignore --ok.
+
+    }
+
+    test("Do not tolerate unrecognized args") {
+        //        val parser = parserOf(skippingUnrecognizedArgs = true)
+
+        class Args(parser: ArgParser) {
+            val init by parser.flagging(TEST_HELP)
+        }
+
+        shouldThrow<UnrecognizedOptionException> {
+            Args(parserOf("--name", "hello,world", "--init", "--spring.profiles.active=staging","-e", skippingUnrecognizedArgs = false)).init
+        }
+
+
+        class Args2(parser: ArgParser) {
+            val xyz by parser.option<MutableList<String>>(
+                "--xray", "--yellow", "--zaphod",
+                argNames = oneArgName,
+                help = TEST_HELP
+            ) {
+                value.orElse { mutableListOf<String>() }.apply {
+                    add("$optionName:${arguments.first()}")
+                }
+            }
+        }
+
+        shouldThrow<UnrecognizedOptionException> {
+            // Test with value as separate arg
+            Args2(
+                parserOf("--xray", "0", "--yellow", "1", "--ok", "--zaphod", "2", "--zaphod", "3", "--yellow", "4", skippingUnrecognizedArgs = false)
+            ).xyz
+        }.run { message shouldBe  "unrecognized option '--ok'" }
+    }
+
     test("Option name validation") {
         val parser = parserOf()
 
@@ -161,8 +226,10 @@ class ArgParserTest : FunSpec({
 
     test("Argless short options") {
         class Args(parser: ArgParser) {
-            val xyz by parser.option<MutableList<String>>("-x", "-y", "-z",
-                help = TEST_HELP) {
+            val xyz by parser.option<MutableList<String>>(
+                "-x", "-y", "-z",
+                help = TEST_HELP
+            ) {
                 value.orElse { mutableListOf<String>() }.apply {
                     add("$optionName")
                 }
@@ -179,8 +246,10 @@ class ArgParserTest : FunSpec({
             val a by parser.flagging("-a", help = TEST_HELP)
             val b by parser.flagging("-b", help = TEST_HELP)
             val c by parser.flagging("-c", help = TEST_HELP)
-            val xyz by parser.option<MutableList<String>>("-x", "-y", "-z",
-                argNames = oneArgName, help = TEST_HELP) {
+            val xyz by parser.option<MutableList<String>>(
+                "-x", "-y", "-z",
+                argNames = oneArgName, help = TEST_HELP
+            ) {
                 value.orElse { mutableListOf<String>() }.apply {
                     add("$optionName:${arguments.first()}")
                 }
@@ -188,13 +257,17 @@ class ArgParserTest : FunSpec({
         }
 
         // Test with value as separate arg
-        Args(parserOf("-x", "0", "-y", "1", "-z", "2", "-z", "3", "-y", "4")).xyz shouldBe listOf("-x:0", "-y:1", "-z:2", "-z:3", "-y:4")
+        Args(parserOf("-x", "0", "-y", "1", "-z", "2", "-z", "3", "-y", "4")).xyz shouldBe listOf(
+            "-x:0", "-y:1", "-z:2", "-z:3", "-y:4"
+        )
 
         // Test with value concatenated
         Args(parserOf("-x0", "-y1", "-z2", "-z3", "-y4")).xyz shouldBe listOf("-x:0", "-y:1", "-z:2", "-z:3", "-y:4")
 
         // Test with = between option and value. Note that the "=" is treated as part of the option value for short options.
-        Args(parserOf("-x=0", "-y=1", "-z=2", "-z=3", "-y=4")).xyz shouldBe listOf("-x:=0", "-y:=1", "-z:=2", "-z:=3", "-y:=4")
+        Args(parserOf("-x=0", "-y=1", "-z=2", "-z=3", "-y=4")).xyz shouldBe listOf(
+            "-x:=0", "-y:=1", "-z:=2", "-z:=3", "-y:=4"
+        )
 
         // Test chained options. Note that an option with arguments must be last in the chain
         val chain1 = Args(parserOf("-abxc"))
@@ -212,14 +285,18 @@ class ArgParserTest : FunSpec({
 
     test("Mixed short options") {
         class Args(parser: ArgParser) {
-            val def by parser.option<MutableList<String>>("-d", "-e", "-f",
-                help = TEST_HELP) {
+            val def by parser.option<MutableList<String>>(
+                "-d", "-e", "-f",
+                help = TEST_HELP
+            ) {
                 value.orElse { mutableListOf<String>() }.apply {
                     add("$optionName")
                 }
             }
-            val abc by parser.option<MutableList<String>>("-a", "-b", "-c",
-                help = TEST_HELP) {
+            val abc by parser.option<MutableList<String>>(
+                "-a", "-b", "-c",
+                help = TEST_HELP
+            ) {
                 value.orElse { mutableListOf<String>() }.apply {
                     add("$optionName")
                 }
@@ -234,21 +311,27 @@ class ArgParserTest : FunSpec({
 
     test("Mixed short options with args") {
         class Args(parser: ArgParser) {
-            val def by parser.option<MutableList<String>>("-d", "-e", "-f",
-                help = TEST_HELP) {
+            val def by parser.option<MutableList<String>>(
+                "-d", "-e", "-f",
+                help = TEST_HELP
+            ) {
                 value.orElse { mutableListOf<String>() }.apply {
                     add("$optionName")
                 }
             }
-            val abc by parser.option<MutableList<String>>("-a", "-b", "-c",
-                help = TEST_HELP) {
+            val abc by parser.option<MutableList<String>>(
+                "-a", "-b", "-c",
+                help = TEST_HELP
+            ) {
                 value.orElse { mutableListOf<String>() }.apply {
                     add("$optionName")
                 }
             }
-            val xyz by parser.option<MutableList<String>>("-x", "-y", "-z",
+            val xyz by parser.option<MutableList<String>>(
+                "-x", "-y", "-z",
                 argNames = oneArgName,
-                help = TEST_HELP) {
+                help = TEST_HELP
+            ) {
                 value.orElse { mutableListOf<String>() }.apply {
                     add("$optionName:${arguments.first()}")
                 }
@@ -264,37 +347,47 @@ class ArgParserTest : FunSpec({
 
     test("Argless long options") {
         class Args(parser: ArgParser) {
-            val xyz by parser.option<MutableList<String>>("--xray", "--yellow", "--zebra",
-                help = TEST_HELP) {
+            val xyz by parser.option<MutableList<String>>(
+                "--xray", "--yellow", "--zebra",
+                help = TEST_HELP
+            ) {
                 value.orElse { mutableListOf<String>() }.apply {
                     add("$optionName")
                 }
             }
         }
 
-        Args(parserOf("--xray", "--yellow", "--zebra", "--zebra", "--yellow")).xyz shouldBe listOf("--xray", "--yellow", "--zebra", "--zebra", "--yellow")
+        Args(parserOf("--xray", "--yellow", "--zebra", "--zebra", "--yellow")).xyz shouldBe listOf(
+            "--xray", "--yellow", "--zebra", "--zebra", "--yellow"
+        )
 
         Args(parserOf("--xray", "--yellow", "--zebra")).xyz shouldBe listOf("--xray", "--yellow", "--zebra")
     }
 
     test("Dotted long options") {
         class Args(parser: ArgParser) {
-            val xyz by parser.option<MutableList<String>>("--x.ray", "--color.yellow", "--animal.zebra",
-                help = TEST_HELP) {
+            val xyz by parser.option<MutableList<String>>(
+                "--x.ray", "--color.yellow", "--animal.zebra",
+                help = TEST_HELP
+            ) {
                 value.orElse { mutableListOf<String>() }.apply {
                     add("$optionName")
                 }
             }
         }
 
-        Args(parserOf("--x.ray", "--animal.zebra", "--color.yellow", "--x.ray")).xyz shouldBe listOf("--x.ray", "--animal.zebra", "--color.yellow", "--x.ray")
+        Args(parserOf("--x.ray", "--animal.zebra", "--color.yellow", "--x.ray")).xyz shouldBe listOf(
+            "--x.ray", "--animal.zebra", "--color.yellow", "--x.ray"
+        )
     }
 
     test("Long options with one arg") {
         class Args(parser: ArgParser) {
-            val xyz by parser.option<MutableList<String>>("--xray", "--yellow", "--zaphod",
+            val xyz by parser.option<MutableList<String>>(
+                "--xray", "--yellow", "--zaphod",
                 argNames = oneArgName,
-                help = TEST_HELP) {
+                help = TEST_HELP
+            ) {
                 value.orElse { mutableListOf<String>() }.apply {
                     add("$optionName:${arguments.first()}")
                 }
@@ -302,10 +395,14 @@ class ArgParserTest : FunSpec({
         }
 
         // Test with value as separate arg
-        Args(parserOf("--xray", "0", "--yellow", "1", "--zaphod", "2", "--zaphod", "3", "--yellow", "4")).xyz shouldBe listOf("--xray:0", "--yellow:1", "--zaphod:2", "--zaphod:3", "--yellow:4")
+        Args(
+            parserOf("--xray", "0", "--yellow", "1", "--zaphod", "2", "--zaphod", "3", "--yellow", "4")
+        ).xyz shouldBe listOf("--xray:0", "--yellow:1", "--zaphod:2", "--zaphod:3", "--yellow:4")
 
         // Test with = between option and value
-        Args(parserOf("--xray=0", "--yellow=1", "--zaphod=2", "--zaphod=3", "--yellow=4")).xyz shouldBe listOf("--xray:0", "--yellow:1", "--zaphod:2", "--zaphod:3", "--yellow:4")
+        Args(parserOf("--xray=0", "--yellow=1", "--zaphod=2", "--zaphod=3", "--yellow=4")).xyz shouldBe listOf(
+            "--xray:0", "--yellow:1", "--zaphod:2", "--zaphod:3", "--yellow:4"
+        )
 
         shouldThrow<UnrecognizedOptionException> {
             Args(parserOf("--xray0", "--yellow1", "--zaphod2", "--zaphod3", "--yellow4")).xyz
@@ -316,9 +413,11 @@ class ArgParserTest : FunSpec({
 
     test("Long options with multiple args") {
         class Args(parser: ArgParser) {
-            val xyz by parser.option<MutableList<String>>("--xray", "--yak", "--zaphod",
+            val xyz by parser.option<MutableList<String>>(
+                "--xray", "--yak", "--zaphod",
                 argNames = listOf("COLOR", "SIZE", "FLAVOR"),
-                help = TEST_HELP) {
+                help = TEST_HELP
+            ) {
                 value.orElse { mutableListOf<String>() }.apply { add("$optionName:$arguments") }
             }
         }
@@ -327,12 +426,14 @@ class ArgParserTest : FunSpec({
         Args(parserOf("--xray", "red", "5", "salty")).xyz shouldBe listOf("--xray:[red, 5, salty]")
 
         Args(parserOf("--zaphod", "green", "42", "sweet", "--yak", "blue", "7", "bitter")).xyz shouldBe listOf(
-            "--zaphod:[green, 42, sweet]", "--yak:[blue, 7, bitter]")
+            "--zaphod:[green, 42, sweet]", "--yak:[blue, 7, bitter]"
+        )
 
         // Note that something that looks like an option is consumed as an argument if it appears where an argument
         // should be. This is expected behavior.
         Args(parserOf("--zaphod", "green", "42", "--yak")).xyz shouldBe listOf(
-            "--zaphod:[green, 42, --yak]")
+            "--zaphod:[green, 42, --yak]"
+        )
 
         shouldThrow<OptionMissingRequiredArgumentException> {
             Args(parserOf("--zaphod", "green", "42", "sweet", "--yak", "blue", "7")).xyz
@@ -355,16 +456,20 @@ class ArgParserTest : FunSpec({
 
     test("Delegate provider") {
         fun ArgParser.putting(vararg names: String, help: String) =
-            option<MutableMap<String, String>>(*names,
+            option<MutableMap<String, String>>(
+                *names,
                 argNames = listOf("KEY", "VALUE"),
-                help = help) {
+                help = help
+            ) {
                 value.orElse { mutableMapOf<String, String>() }.apply {
-                    put(arguments.first(), arguments.last()) }
+                    put(arguments.first(), arguments.last())
+                }
             }
 
         fun ArgParser.putting(help: String) =
             ArgParser.DelegateProvider { identifier ->
-                putting(identifierToOptionName(identifier), help = help) }
+                putting(identifierToOptionName(identifier), help = help)
+            }
 
         class Args(parser: ArgParser) {
             val dict by parser.putting(TEST_HELP)
@@ -373,12 +478,15 @@ class ArgParserTest : FunSpec({
         // Test with value as separate arg
         Args(parserOf("--dict", "red", "5")).dict shouldBe mapOf("red" to "5")
 
-        Args(parserOf(
-            "--dict", "green", "42",
-            "--dict", "blue", "7"
-        )).dict shouldBe mapOf(
+        Args(
+            parserOf(
+                "--dict", "green", "42",
+                "--dict", "blue", "7"
+            )
+        ).dict shouldBe mapOf(
             "green" to "42",
-            "blue" to "7")
+            "blue" to "7"
+        )
 
         // Note that something that looks like an option is consumed as an argument if it appears where an argument
         // should be. This is expected behavior.
@@ -399,8 +507,10 @@ class ArgParserTest : FunSpec({
 
     test("Default") {
         class Args(parser: ArgParser) {
-            val x by parser.storing("-x",
-                help = TEST_HELP) { toInt() }.default(5)
+            val x by parser.storing(
+                "-x",
+                help = TEST_HELP
+            ) { toInt() }.default(5)
         }
 
         // Test with no value
@@ -451,12 +561,18 @@ class ArgParserTest : FunSpec({
 
     test("Flag") {
         class Args(parser: ArgParser) {
-            val x by parser.flagging("-x", "--ecks",
-                help = TEST_HELP)
-            val y by parser.flagging("-y",
-                help = TEST_HELP)
-            val z by parser.flagging("--zed",
-                help = TEST_HELP)
+            val x by parser.flagging(
+                "-x", "--ecks",
+                help = TEST_HELP
+            )
+            val y by parser.flagging(
+                "-y",
+                help = TEST_HELP
+            )
+            val z by parser.flagging(
+                "--zed",
+                help = TEST_HELP
+            )
         }
 
         Args(parserOf("-x", "-y", "--zed", "--zed", "-y")).run {
@@ -485,8 +601,10 @@ class ArgParserTest : FunSpec({
 
     test("Argument no parser") {
         class Args(parser: ArgParser) {
-            val x by parser.storing("--ecks", "-x",
-                help = TEST_HELP)
+            val x by parser.storing(
+                "--ecks", "-x",
+                help = TEST_HELP
+            )
         }
 
         Args(parserOf("-x", "foo")).x shouldBe "foo"
@@ -507,8 +625,10 @@ class ArgParserTest : FunSpec({
 
     test("Argument missing long") {
         class Args(parser: ArgParser) {
-            val x by parser.storing("--ecks",
-                help = TEST_HELP)
+            val x by parser.storing(
+                "--ecks",
+                help = TEST_HELP
+            )
         }
 
         val args = Args(parserOf())
@@ -521,8 +641,10 @@ class ArgParserTest : FunSpec({
 
     test("Argument missing short") {
         class Args(parser: ArgParser) {
-            val x by parser.storing("-x",
-                help = TEST_HELP)
+            val x by parser.storing(
+                "-x",
+                help = TEST_HELP
+            )
         }
 
         val args = Args(parserOf())
@@ -535,8 +657,10 @@ class ArgParserTest : FunSpec({
 
     test("Argument withParser") {
         class Args(parser: ArgParser) {
-            val x by parser.storing("-x", "--ecks",
-                help = TEST_HELP) { toInt() }
+            val x by parser.storing(
+                "-x", "--ecks",
+                help = TEST_HELP
+            ) { toInt() }
         }
 
         val opts1 = Args(parserOf("-x", "5"))
@@ -561,8 +685,10 @@ class ArgParserTest : FunSpec({
 
     test("Accumulator noParser") {
         class Args(parser: ArgParser) {
-            val x by parser.adding("-x", "--ecks",
-                help = TEST_HELP)
+            val x by parser.adding(
+                "-x", "--ecks",
+                help = TEST_HELP
+            )
         }
 
         Args(parserOf()).x shouldBe listOf<String>()
@@ -578,8 +704,10 @@ class ArgParserTest : FunSpec({
 
     test("Accumulator withParser") {
         class Args(parser: ArgParser) {
-            val x by parser.adding("-x", "--ecks",
-                help = TEST_HELP) { toInt() }
+            val x by parser.adding(
+                "-x", "--ecks",
+                help = TEST_HELP
+            ) { toInt() }
         }
 
         Args(parserOf()).x shouldBe listOf<Int>()
@@ -594,7 +722,8 @@ class ArgParserTest : FunSpec({
             "--red" to Color.RED,
             "--green" to Color.GREEN,
             "--blue" to Color.BLUE,
-            help = TEST_HELP)
+            help = TEST_HELP
+        )
     }
 
     test("Mapping") {
@@ -620,7 +749,8 @@ class ArgParserTest : FunSpec({
             "--red" to Color.RED,
             "--green" to Color.GREEN,
             "--blue" to Color.BLUE,
-            help = TEST_HELP)
+            help = TEST_HELP
+        )
             .default(Color.GREEN)
     }
 
@@ -649,8 +779,10 @@ class ArgParserTest : FunSpec({
 
     test("Storing no arg") {
         class Args(parser: ArgParser) {
-            val x by parser.storing("-x", "--ecks",
-                help = TEST_HELP)
+            val x by parser.storing(
+                "-x", "--ecks",
+                help = TEST_HELP
+            )
         }
 
         // Note that name actually used for option is used in message
@@ -670,10 +802,14 @@ class ArgParserTest : FunSpec({
 
     test("Short storing no arg chained") {
         class Args(parser: ArgParser) {
-            val y by parser.flagging("-y",
-                help = TEST_HELP)
-            val x by parser.storing("-x",
-                help = TEST_HELP)
+            val y by parser.flagging(
+                "-y",
+                help = TEST_HELP
+            )
+            val x by parser.storing(
+                "-x",
+                help = TEST_HELP
+            )
         }
 
         // Note that despite chaining, hyphen appears in message
@@ -686,12 +822,16 @@ class ArgParserTest : FunSpec({
 
     test("Init validation") {
         class Args(parser: ArgParser) {
-            val yDelegate = parser.storing("-y",
-                help = TEST_HELP) { toInt() }
+            val yDelegate = parser.storing(
+                "-y",
+                help = TEST_HELP
+            ) { toInt() }
             val y by yDelegate
 
-            val xDelegate = parser.storing("-x",
-                help = TEST_HELP) { toInt() }
+            val xDelegate = parser.storing(
+                "-x",
+                help = TEST_HELP
+            ) { toInt() }
             val x by xDelegate
 
             init {
@@ -731,12 +871,16 @@ class ArgParserTest : FunSpec({
 
     test("Add validator") {
         class Args(parser: ArgParser) {
-            val yDelegate = parser.storing("-y",
-                help = TEST_HELP) { toInt() }
+            val yDelegate = parser.storing(
+                "-y",
+                help = TEST_HELP
+            ) { toInt() }
             val y by yDelegate
 
-            val xDelegate = parser.storing("-x",
-                help = TEST_HELP) { toInt() }
+            val xDelegate = parser.storing(
+                "-x",
+                help = TEST_HELP
+            ) { toInt() }
                 .addValidator {
                     if (value.rem(2) != 0)
                         throw InvalidArgumentException("$errorName must be even, $value is odd")
@@ -769,10 +913,14 @@ class ArgParserTest : FunSpec({
 
     test("Unconsumed") {
         class Args(parser: ArgParser) {
-            val y by parser.flagging("-y", "--why",
-                help = TEST_HELP)
-            val x by parser.flagging("-x", "--ecks",
-                help = TEST_HELP)
+            val y by parser.flagging(
+                "-y", "--why",
+                help = TEST_HELP
+            )
+            val x by parser.flagging(
+                "-x", "--ecks",
+                help = TEST_HELP
+            )
         }
 
         // No problem.
@@ -818,14 +966,22 @@ class ArgParserTest : FunSpec({
 
     test("Positional basic") {
         class Args(parser: ArgParser) {
-            val flag by parser.flagging("-f", "--flag",
-                help = TEST_HELP)
-            val store by parser.storing("-s", "--store",
-                help = TEST_HELP).default("DEFAULT")
-            val sources by parser.positionalList("SOURCE",
-                help = TEST_HELP)
-            val destination by parser.positional("DEST",
-                help = TEST_HELP)
+            val flag by parser.flagging(
+                "-f", "--flag",
+                help = TEST_HELP
+            )
+            val store by parser.storing(
+                "-s", "--store",
+                help = TEST_HELP
+            ).default("DEFAULT")
+            val sources by parser.positionalList(
+                "SOURCE",
+                help = TEST_HELP
+            )
+            val destination by parser.positional(
+                "DEST",
+                help = TEST_HELP
+            )
         }
 
         Args(parserOf("foo", "bar", "baz", "quux")).run {
@@ -884,10 +1040,14 @@ class ArgParserTest : FunSpec({
 
     test("Positional with parser") {
         class Args(parser: ArgParser) {
-            val flag by parser.flagging("-f", "--flag",
-                help = TEST_HELP)
-            val store by parser.storing("-s", "--store",
-                help = TEST_HELP).default("DEFAULT")
+            val flag by parser.flagging(
+                "-f", "--flag",
+                help = TEST_HELP
+            )
+            val store by parser.storing(
+                "-s", "--store",
+                help = TEST_HELP
+            ).default("DEFAULT")
             val start by parser.positionalList("START", TEST_HELP, 3..4) { toInt() }
             val end by parser.positionalList("END", TEST_HELP, 3..5) { toInt() }
         }
@@ -949,8 +1109,10 @@ class ArgParserTest : FunSpec({
 
     test("Counting") {
         class Args(parser: ArgParser) {
-            val verbosity by parser.counting("-v", "--verbose",
-                help = TEST_HELP)
+            val verbosity by parser.counting(
+                "-v", "--verbose",
+                help = TEST_HELP
+            )
         }
 
         Args(parserOf()).run {
@@ -968,24 +1130,38 @@ class ArgParserTest : FunSpec({
 
     test("Help") {
         class Args(parser: ArgParser) {
-            val dryRun by parser.flagging("-n", "--dry-run",
-                help = "don't do anything")
-            val includes by parser.adding("-I", "--include",
-                help = "search in this directory for header files")
-            val outDir by parser.storing("-o", "--output",
-                help = "directory in which all output should be generated")
-            val verbosity by parser.counting("-v", "--verbose",
-                help = "increase verbosity")
-            val sources by parser.positionalList("SOURCE",
-                help = "source file")
-            val destination by parser.positional("DEST",
-                help = "destination file")
+            val dryRun by parser.flagging(
+                "-n", "--dry-run",
+                help = "don't do anything"
+            )
+            val includes by parser.adding(
+                "-I", "--include",
+                help = "search in this directory for header files"
+            )
+            val outDir by parser.storing(
+                "-o", "--output",
+                help = "directory in which all output should be generated"
+            )
+            val verbosity by parser.counting(
+                "-v", "--verbose",
+                help = "increase verbosity"
+            )
+            val sources by parser.positionalList(
+                "SOURCE",
+                help = "source file"
+            )
+            val destination by parser.positional(
+                "DEST",
+                help = "destination file"
+            )
         }
 
         shouldThrow<ShowHelpException> {
-            Args(parserOf("--help",
-                helpFormatter = DefaultHelpFormatter(
-                    prologue = """
+            Args(
+                parserOf(
+                    "--help",
+                    helpFormatter = DefaultHelpFormatter(
+                        prologue = """
                             This is the prologue. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam
                             malesuada maximus eros. Fusce luctus risus eget quam consectetur, eu auctor est ullamcorper.
                             Maecenas eget suscipit dui, sed sodales erat. Phasellus.
@@ -993,9 +1169,12 @@ class ArgParserTest : FunSpec({
                             This is the second paragraph of the prologue. I don't have anything else to say, but I'd
                             like there to be enough text that it wraps to the next line.
                             """,
-                    epilogue = """
+                        epilogue = """
                             This is the epilogue. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec vel tortor nunc. Sed eu massa sed turpis auctor faucibus. Donec vel pellentesque tortor. Ut ultrices tempus lectus fermentum vestibulum. Phasellus.
-                            """))).dryRun
+                            """
+                    )
+                )
+            ).dryRun
         }.run {
             val help = StringWriter().apply { printUserMessage(this, "program_name", 60) }.toString()
             help shouldBe """
@@ -1142,13 +1321,15 @@ This is the epilogue. Lorem ipsum dolor sit amet, consectetur adipiscing elit. D
             val positionalList_int by parser.positionalList(sizeRange = 2..2, help = TEST_HELP) { toInt() }
         }
 
-        Args(parserOf(
-            "--flag1", "--count", "--count", "--store=hello", "--store-int=42",
-            "--adder=foo", "--adder=bar",
-            "--int-adder=2", "--int-adder=4", "--int-adder=6",
-            "--int-set-adder=64", "--int-set-adder=128", "--int-set-adder=20",
-            "1", "1", "2", "3", "5", "8"
-        )).run {
+        Args(
+            parserOf(
+                "--flag1", "--count", "--count", "--store=hello", "--store-int=42",
+                "--adder=foo", "--adder=bar",
+                "--int-adder=2", "--int-adder=4", "--int-adder=6",
+                "--int-set-adder=64", "--int-set-adder=128", "--int-set-adder=20",
+                "1", "1", "2", "3", "5", "8"
+            )
+        ).run {
             flag1 shouldBe true
             flag2 shouldBe false
             count shouldBe 2
@@ -1164,9 +1345,11 @@ This is the epilogue. Lorem ipsum dolor sit amet, consectetur adipiscing elit. D
         }
 
         shouldThrow<MissingRequiredPositionalArgumentException> {
-            Args(parserOf(
-                "13", "21", "34", "55", "89"
-            )).run {
+            Args(
+                parserOf(
+                    "13", "21", "34", "55", "89"
+                )
+            ).run {
                 flag1 shouldBe false
             }
         }.run {
@@ -1202,6 +1385,7 @@ This is the epilogue. Lorem ipsum dolor sit amet, consectetur adipiscing elit. D
                 .default(Circle())
             val rect by parser.storing("The path", transform = ::Rectangle)
         }
+
         val args = Args(parserOf("--rect=foo"))
         staticType(args.shape) shouldBe Shape::class
         args.shape should beOfType<Circle>()
@@ -1282,7 +1466,9 @@ This is the epilogue. Lorem ipsum dolor sit amet, consectetur adipiscing elit. D
 
         Args(parserOf()).autoAccumulator shouldBe emptyList<String>()
         Args(parserOf("--auto-accumulator=foo")).autoAccumulator shouldBe listOf("foo")
-        Args(parserOf("--auto-accumulator", "bar", "--auto-accumulator", "baz")).autoAccumulator shouldBe listOf("bar", "baz")
+        Args(parserOf("--auto-accumulator", "bar", "--auto-accumulator", "baz")).autoAccumulator shouldBe listOf(
+            "bar", "baz"
+        )
     }
 
     test("Auto named adding with transform") {
@@ -1382,8 +1568,10 @@ This is the epilogue. Lorem ipsum dolor sit amet, consectetur adipiscing elit. D
             val xyz by parser.option<MutableList<String>>(
                 "--xyz",
                 argNames = listOf("COLOR", "SIZE", "FLAVOR"),
-                help = TEST_HELP) {
-                value.orElse { mutableListOf<String>() }.apply { add("$optionName:$arguments")
+                help = TEST_HELP
+            ) {
+                value.orElse { mutableListOf<String>() }.apply {
+                    add("$optionName:$arguments")
                 }
             }
         }
@@ -1392,12 +1580,14 @@ This is the epilogue. Lorem ipsum dolor sit amet, consectetur adipiscing elit. D
         Args(parserOf("--xyz", "red", "5", "salty")).xyz shouldBe listOf("--xyz:[red, 5, salty]")
 
         Args(parserOf("--xyz", "green", "42", "sweet", "--xyz", "blue", "7", "bitter")).xyz shouldBe listOf(
-            "--xyz:[green, 42, sweet]", "--xyz:[blue, 7, bitter]")
+            "--xyz:[green, 42, sweet]", "--xyz:[blue, 7, bitter]"
+        )
 
         // Note that something that looks like an option is consumed as an argument if it appears where an argument
         // should be. This is expected behavior.
         Args(parserOf("--xyz", "green", "42", "--xyz")).xyz shouldBe listOf(
-            "--xyz:[green, 42, --xyz]")
+            "--xyz:[green, 42, --xyz]"
+        )
 
         shouldThrow<OptionMissingRequiredArgumentException> {
             Args(parserOf("--xyz", "green", "42", "sweet", "--xyz", "blue", "7")).xyz
@@ -1519,6 +1709,7 @@ This is the epilogue. Lorem ipsum dolor sit amet, consectetur adipiscing elit. D
 
         shouldThrow<IllegalStateException> {
             val parser = parserOf("--str=foo")
+
             @Suppress("unused_variable")
             val oops by parser.storing("--oops", help = TEST_HELP).default("oops")
             parser.parseInto(::Args)
@@ -1580,6 +1771,7 @@ optional arguments:
                 value shouldBe 0
             }
         }
+
         val x = Args(parserOf()).x
         x shouldBe 0
     }
@@ -1609,7 +1801,8 @@ optional arguments:
     }
 
     test("Dependent args test order mat") {
-        val result = DependentArgs(parserOf("--suffix", "bar", "-x", "foo", "-x", "dry", "--suffix", "fish", "-x", "cat")).x
+        val result =
+            DependentArgs(parserOf("--suffix", "bar", "-x", "foo", "-x", "dry", "--suffix", "fish", "-x", "cat")).x
         result shouldBe listOf("foo:bar", "dry:bar", "cat:fish")
     }
 
@@ -1631,7 +1824,7 @@ optional arguments:
 
     test("Dependent args test with default unset") {
         DependentArgsWithDefault(parserOf("-x", "foo", "-x", "dry", "--suffix", "fish", "-x", "cat")).x shouldBe
-            listOf("foo:", "dry:", "cat:fish")
+                listOf("foo:", "dry:", "cat:fish")
     }
 
     class DependentArgsWithDependentDefault(parser: ArgParser) {
@@ -1680,8 +1873,9 @@ class Circle : Shape()
 fun parserOf(
     vararg args: String,
     mode: ArgParser.Mode = ArgParser.Mode.GNU,
-    helpFormatter: HelpFormatter? = DefaultHelpFormatter()
-) = ArgParser(args, mode, helpFormatter)
+    helpFormatter: HelpFormatter? = DefaultHelpFormatter(),
+    skippingUnrecognizedArgs: Boolean = false
+) = ArgParser(args, mode, helpFormatter, skippingUnrecognizedArgs)
 
 /**
  * Helper function for getting the static (not runtime) type of an expression. This is useful for verifying that the

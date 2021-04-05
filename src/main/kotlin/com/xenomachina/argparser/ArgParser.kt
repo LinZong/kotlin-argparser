@@ -32,13 +32,15 @@ import kotlin.reflect.KProperty
  *
  * @param args the command line arguments to parse
  * @param mode parsing mode, defaults to GNU-style parsing
+ * @param skippingUnrecognizedArgs skipping argument and it's value not declared by delegate.
  * @param helpFormatter if non-null, creates `--help` and `-h` options that trigger a [ShowHelpException] which will use
  * the supplied [HelpFormatter] to generate a help message.
  */
 class ArgParser(
     args: Array<out String>,
     mode: Mode = Mode.GNU,
-    helpFormatter: HelpFormatter? = DefaultHelpFormatter()
+    helpFormatter: HelpFormatter? = DefaultHelpFormatter(),
+    val skippingUnrecognizedArgs: Boolean = false
 ) {
 
     enum class Mode {
@@ -242,17 +244,15 @@ class ArgParser(
         argNames: List<String> = emptyList(),
         isRepeating: Boolean = false,
         handler: OptionInvocation<T>.() -> T
-    ): Delegate<T> {
-        val delegate = OptionDelegate<T>(
-                parser = this,
-                errorName = errorName ?: optionNameToArgName(selectRepresentativeOptionName(names)),
-                help = help,
-                optionNames = listOf(*names),
-                argNames = argNames.toList(),
-                isRepeating = isRepeating,
-                handler = handler)
-        return delegate
-    }
+    ): Delegate<T> = OptionDelegate(
+        parser = this,
+        errorName = errorName ?: optionNameToArgName(selectRepresentativeOptionName(names)),
+        help = help,
+        optionNames = listOf(*names),
+        argNames = argNames.toList(),
+        isRepeating = isRepeating,
+        handler = handler
+    )
 
     /**
      * Creates a Delegate for a single positional argument which returns the argument's value.
@@ -327,7 +327,7 @@ class ArgParser(
             require(last > 0) { "sizeRange only allows $last arguments, must allow at least 1" }
         }
 
-        return PositionalDelegate<T>(this, name, sizeRange, help = help, transform = transform)
+        return PositionalDelegate(this, name, sizeRange, help = help, transform = transform)
     }
 
     /**
@@ -361,7 +361,7 @@ class ArgParser(
          *
          * It provides itself, and also registers itself with the [ArgParser] at that time.
          */
-        operator fun provideDelegate(thisRef: Any?, prop: KProperty<*>): ArgParser.Delegate<T> {
+        operator fun provideDelegate(thisRef: Any?, prop: KProperty<*>): Delegate<T> {
             registerRoot()
             return this
         }
@@ -430,12 +430,12 @@ class ArgParser(
         if (name.startsWith("--")) {
             require(name.length > 2) { "long option '$name' must have at least one character after hyphen" }
             require(name !in longOptionDelegates) { "long option '$name' already in use" }
-            longOptionDelegates.put(name, delegate)
+            longOptionDelegates[name] = delegate
         } else if (name.startsWith("-")) {
             require(name.length == 2) { "short option '$name' can only have one character after hyphen" }
-            val key = name.get(1)
+            val key = name[1]
             require(key !in shortOptionDelegates) { "short option '$name' already in use" }
-            shortOptionDelegates.put(key, delegate)
+            shortOptionDelegates[key] = delegate
         } else {
             throw IllegalArgumentException("illegal option name '$name' -- must start with '-' or '--'")
         }
@@ -518,7 +518,7 @@ class ArgParser(
             }
 
             // Collect remaining arguments as positional-only arguments
-            positionalArguments.addAll(args.slice(i..args.size - 1))
+            positionalArguments.addAll(args.slice(i until args.size))
 
             parsePositionalArguments(positionalArguments)
             finished = true
@@ -537,7 +537,7 @@ class ArgParser(
         for ((delegate, hasDefault) in positionalDelegates) {
             val minSize = if (hasDefault) 0 else delegate.sizeRange.first
             val sizeRange = delegate.sizeRange
-            val chunkSize = (minSize + extra).coerceAtMost(sizeRange.endInclusive)
+            val chunkSize = (minSize + extra).coerceAtMost(sizeRange.last)
             if (chunkSize > remaining) {
                 throw MissingRequiredPositionalArgumentException(delegate.errorName)
             }
@@ -571,18 +571,24 @@ class ArgParser(
             name = m.groups[1]!!.value
             firstArg = m.groups[2]!!.value
         }
-        val delegate = longOptionDelegates.get(name)
-        if (delegate == null) {
-            throw UnrecognizedOptionException(name)
+        val delegate = longOptionDelegates[name]
+        return if (delegate == null) {
+            if (!skippingUnrecognizedArgs) {
+                throw UnrecognizedOptionException(name)
+            } else {
+                eatUnrecognizedArgs(firstArg, index, args)
+            }
         } else {
             var consumedArgs = delegate.parseOption(name, firstArg, index + 1, args)
             if (firstArg != null) {
                 if (consumedArgs < 1) throw UnexpectedOptionArgumentException(name)
                 consumedArgs -= 1
             }
-            return 1 + consumedArgs
+            1 + consumedArgs
         }
     }
+
+
 
     /**
      * @param index index into args, starting at a set of short options, eg: "-abXv"
@@ -597,9 +603,14 @@ class ArgParser(
             val optName = "-$optKey"
             optIndex++ // optIndex now points just after optKey
 
-            val delegate = shortOptionDelegates.get(optKey)
+            val delegate = shortOptionDelegates[optKey]
             if (delegate == null) {
-                throw UnrecognizedOptionException(optName)
+                if (!skippingUnrecognizedArgs) {
+                    throw UnrecognizedOptionException(optName)
+                } else {
+                    val firstArg = if (optIndex >= opts.length) null else opts.substring(optIndex)
+                    return eatUnrecognizedArgs(firstArg, index, args)
+                }
             } else {
                 val firstArg = if (optIndex >= opts.length) null else opts.substring(optIndex)
                 val consumed = delegate.parseOption(optName, firstArg, index + 1, args)
@@ -609,6 +620,37 @@ class ArgParser(
             }
         }
         return 1
+    }
+
+    /**
+     * Eat undeclared argName and potential value while [skippingUnrecognizedArgs] is true.
+     * @param firstArg value of current parsing ArgName, may be null.
+     * @param index current parsing index (related to args)
+     * @param args arg array to parse.
+     * @return consumed args count.
+     */
+    private fun eatUnrecognizedArgs(firstArg: String?, index: Int, args: Array<out String>): Int {
+        /**
+         * since we don't know if it's a flagging, storing or else.
+         * we can only eat this unrecognized argName and potential 'values'
+         * and hope 'positional args' won't be affected.
+         */
+        if (firstArg != null) {
+            // -oArgument, potential value had been eaten as well, so move on.
+            return 1
+        }
+        // out of range. stop.
+        if (index + 1 !in args.indices) {
+            return 1
+        }
+        val next = args[index + 1]
+        return if (next.startsWith("-")) {
+            // maybe another argName, do nothing.
+            1
+        } else {
+            // eat potential value.
+            2
+        }
     }
 
     init {
