@@ -148,6 +148,25 @@ artifacts {
     archives javadocJar, sourcesJar
 }
 
+
+def getReleaseRepositoryUrl() {
+    return hasProperty('RELEASE_REPOSITORY_URL') ? RELEASE_REPOSITORY_URL
+            : 'https://oss.sonatype.org/service/local/staging/deploy/maven2/'
+}
+
+def getSnapshotRepositoryUrl() {
+    return hasProperty('SNAPSHOT_REPOSITORY_URL') ? SNAPSHOT_REPOSITORY_URL
+            : 'https://oss.sonatype.org/content/repositories/snapshots/'
+}
+
+def getRepositoryUsername() {
+    return hasProperty('NEXUS_USERNAME') ? NEXUS_USERNAME : ''
+}
+
+def getRepositoryPassword() {
+    return hasProperty('NEXUS_PASSWORD') ? NEXUS_PASSWORD : ''
+}
+
 if (System.env.CI != "true") {
     // Some of the stuff in here can break continuous integration, and none of
     // it is necessary in CI.
@@ -197,19 +216,19 @@ if (System.env.CI != "true") {
         sign configurations.archives
     }
 
-    def ossrhUsernameOrEmpty = hasProperty('ossrhUsername') ? ossrhUsername : ''
-    def ossrhPasswordOrEmpty = hasProperty('ossrhPassword') ? ossrhPassword : ''
+    def ossrhUsernameOrEmpty = getRepositoryUsername()
+    def ossrhPasswordOrEmpty = getRepositoryPassword()
 
     uploadArchives {
         repositories {
             mavenDeployer {
                 beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
 
-                repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
+                repository(url: getReleaseRepositoryUrl()) {
                     authentication(userName: ossrhUsernameOrEmpty, password: ossrhPasswordOrEmpty)
                 }
 
-                snapshotRepository(url: "https://oss.sonatype.org/content/repositories/snapshots/") {
+                snapshotRepository(url: getSnapshotRepositoryUrl()) {
                     authentication(userName: ossrhUsernameOrEmpty, password: ossrhPasswordOrEmpty)
                 }
 
