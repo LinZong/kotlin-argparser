@@ -52,7 +52,7 @@ assert name == 'kotlin-argparser'
 description = 'Concise, easy, powerful and robust command line argument parsing for Kotlin'
 
 group 'com.xenomachina'
-version = gitVersion()
+version = '2.0.8-SHAPSHOT'
 
 project.ext {
     githubUser = "xenomachina"
