@@ -24,7 +24,7 @@ import com.xenomachina.argparser.PosixNaming.optionNameToArgName
 import com.xenomachina.argparser.PosixNaming.selectRepresentativeOptionName
 import com.xenomachina.common.Holder
 import com.xenomachina.common.orElse
-import java.util.LinkedHashSet
+import java.util.*
 import kotlin.reflect.KProperty
 
 /**
@@ -32,13 +32,13 @@ import kotlin.reflect.KProperty
  *
  * @param args the command line arguments to parse
  * @param mode parsing mode, defaults to GNU-style parsing
- * @param skippingUnrecognizedArgs skipping argument and it's value not declared by delegate.
+ * @param skippingUnrecognizedArgs skipping argument and it's value not declared by delegate. see [eatUnrecognizedArgs].
  * @param helpFormatter if non-null, creates `--help` and `-h` options that trigger a [ShowHelpException] which will use
  * the supplied [HelpFormatter] to generate a help message.
  */
 class ArgParser(
     args: Array<out String>,
-    mode: Mode = Mode.GNU,
+    val mode: Mode = Mode.GNU,
     helpFormatter: HelpFormatter? = DefaultHelpFormatter(),
     val skippingUnrecognizedArgs: Boolean = false
 ) {
@@ -604,15 +604,14 @@ class ArgParser(
             optIndex++ // optIndex now points just after optKey
 
             val delegate = shortOptionDelegates[optKey]
+            val firstArg = if (optIndex >= opts.length) null else opts.substring(optIndex)
             if (delegate == null) {
                 if (!skippingUnrecognizedArgs) {
                     throw UnrecognizedOptionException(optName)
                 } else {
-                    val firstArg = if (optIndex >= opts.length) null else opts.substring(optIndex)
                     return eatUnrecognizedArgs(firstArg, index, args)
                 }
             } else {
-                val firstArg = if (optIndex >= opts.length) null else opts.substring(optIndex)
                 val consumed = delegate.parseOption(optName, firstArg, index + 1, args)
                 if (consumed > 0) {
                     return consumed + (if (firstArg == null) 1 else 0)
@@ -624,6 +623,11 @@ class ArgParser(
 
     /**
      * Eat undeclared argName and potential value while [skippingUnrecognizedArgs] is true.
+     *
+     * In [Mode.POSIX], It will eat short or long opt arg name and one following value if exists.
+     *
+     * In [Mode.GNU] If will eat hort or long opt arg name and all following values if exists.
+     *
      * @param firstArg value of current parsing ArgName, may be null.
      * @param index current parsing index (related to args)
      * @param args arg array to parse.
@@ -632,11 +636,11 @@ class ArgParser(
     private fun eatUnrecognizedArgs(firstArg: String?, index: Int, args: Array<out String>): Int {
         /**
          * since we don't know if it's a flagging, storing or else.
-         * we can only eat this unrecognized argName and potential 'values'
+         * we can only eat this unrecognized option and potential 'values'
          * and hope 'positional args' won't be affected.
          */
         if (firstArg != null) {
-            // -oArgument, potential value had been eaten as well, so move on.
+            // -oArgument, or --name=value, potential argument had been eaten as well, so move on.
             return 1
         }
         // out of range. stop.
@@ -645,11 +649,24 @@ class ArgParser(
         }
         val next = args[index + 1]
         return if (next.startsWith("-")) {
-            // maybe another argName, do nothing.
+            // maybe another option, do not eat it.
             1
         } else {
-            // eat potential value.
-            2
+            when (mode) {
+                // options must before positional argument, so we cannot eat more than one values.
+                Mode.POSIX -> 2
+                // options may appear after positional argument, so eat values until next options.
+                Mode.GNU -> {
+                    var values = 0
+                    for (i in index + 1 until args.size) {
+                        if (args[i].startsWith("-")) {
+                            break
+                        }
+                        values++
+                    }
+                    return 1 + values
+                }
+            }
         }
     }
 

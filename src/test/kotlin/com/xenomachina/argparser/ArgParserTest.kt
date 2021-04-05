@@ -58,26 +58,35 @@ class ArgParserTest : FunSpec({
         Args2(
             parserOf("--xray", "0", "--yellow", "1", "--ok", "--zaphod", "2", "--zaphod", "3", "--yellow", "4", skippingUnrecognizedArgs = true)
         ).xyz shouldBe listOf("--xray:0", "--yellow:1", "--zaphod:2", "--zaphod:3", "--yellow:4")
-        // here can ignore --ok.
+        // here can ignore --ok without argument.
 
         Args2(
-            parserOf("--xray", "0", "--yellow", "1", "--ok", "yep", "--zaphod", "2", "--zaphod", "3", "--yellow", "4", skippingUnrecognizedArgs = true)
+            parserOf("--xray", "0", "--yellow", "1", "--ok", "yep","yahh", "well", "--zaphod", "2", "--zaphod", "3", "--yellow", "4", skippingUnrecognizedArgs = true)
         ).xyz shouldBe listOf("--xray:0", "--yellow:1", "--zaphod:2", "--zaphod:3", "--yellow:4")
-        // here can ignore --ok.
+        // here can ignore --ok with multiple argument.
 
         Args2(
             parserOf("--xray", "0", "--yellow", "1", "-oArguments", "--zaphod", "2", "--zaphod", "3", "--yellow", "4", skippingUnrecognizedArgs = true)
         ).xyz shouldBe listOf("--xray:0", "--yellow:1", "--zaphod:2", "--zaphod:3", "--yellow:4")
-        // here can ignore --ok.
+        // here can ignore -oArgument without argument.
 
         Args2(
             parserOf("--xray", "0", "--yellow", "1", "-o", "--zaphod", "2", "--zaphod", "3", "--yellow", "4", skippingUnrecognizedArgs = true)
         ).xyz shouldBe listOf("--xray:0", "--yellow:1", "--zaphod:2", "--zaphod:3", "--yellow:4")
-        // here can ignore --ok.
+        // here can ignore -o without argument.
+
+        Args2(
+            parserOf("--xray", "0", "--yellow", "1", "-o", "well", "--zaphod", "2", "--zaphod", "3", "--yellow", "4", skippingUnrecognizedArgs = true)
+        ).xyz shouldBe listOf("--xray:0", "--yellow:1", "--zaphod:2", "--zaphod:3", "--yellow:4")
+        // here can ignore -o with single argument.
+
+        Args2(
+            parserOf("--xray", "0", "--yellow", "1", "-o", "well", "fine", "--zaphod", "2", "--zaphod", "3", "--yellow", "4", skippingUnrecognizedArgs = true)
+        ).xyz shouldBe listOf("--xray:0", "--yellow:1", "--zaphod:2", "--zaphod:3", "--yellow:4")
+        // here can ignore -o with multiple argument.
     }
 
     test("Do not tolerate unrecognized args") {
-        //        val parser = parserOf(skippingUnrecognizedArgs = true)
 
         class Args(parser: ArgParser) {
             val init by parser.flagging(TEST_HELP)
