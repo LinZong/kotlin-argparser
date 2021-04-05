@@ -60,6 +60,20 @@ class ArgParserTest : FunSpec({
         ).xyz shouldBe listOf("--xray:0", "--yellow:1", "--zaphod:2", "--zaphod:3", "--yellow:4")
         // here can ignore --ok.
 
+        Args2(
+            parserOf("--xray", "0", "--yellow", "1", "--ok", "yep", "--zaphod", "2", "--zaphod", "3", "--yellow", "4", skippingUnrecognizedArgs = true)
+        ).xyz shouldBe listOf("--xray:0", "--yellow:1", "--zaphod:2", "--zaphod:3", "--yellow:4")
+        // here can ignore --ok.
+
+        Args2(
+            parserOf("--xray", "0", "--yellow", "1", "-oArguments", "--zaphod", "2", "--zaphod", "3", "--yellow", "4", skippingUnrecognizedArgs = true)
+        ).xyz shouldBe listOf("--xray:0", "--yellow:1", "--zaphod:2", "--zaphod:3", "--yellow:4")
+        // here can ignore --ok.
+
+        Args2(
+            parserOf("--xray", "0", "--yellow", "1", "-o", "--zaphod", "2", "--zaphod", "3", "--yellow", "4", skippingUnrecognizedArgs = true)
+        ).xyz shouldBe listOf("--xray:0", "--yellow:1", "--zaphod:2", "--zaphod:3", "--yellow:4")
+        // here can ignore --ok.
     }
 
     test("Do not tolerate unrecognized args") {
