@@ -30,7 +30,63 @@ import java.io.StringWriter
 
 class ArgParserTest : FunSpec({
 
-    test("Skip unrecognized args") {
+    test("Skip unrecognized args POSIX") {
+        
+        class Args2(parser: ArgParser) {
+            val xyz by parser.option<MutableList<String>>(
+                "--xray", "--yellow", "--zaphod",
+                argNames = oneArgName,
+                help = TEST_HELP
+            ) {
+                value.orElse { mutableListOf<String>() }.apply {
+                    add("$optionName:${arguments.first()}")
+                }
+            }
+        }
+
+        class Args3(parser: ArgParser) {
+            val xyz by parser.option<MutableList<String>>(
+                "--xray", "--yellow",
+                argNames = oneArgName,
+                help = TEST_HELP
+            ) {
+                value.orElse { mutableListOf<String>() }.apply {
+                    add("$optionName:${arguments.size}")
+                }
+            }
+        }
+
+        // Test with value as separate arg
+        Args2(
+            parserOf("--xray", "0", "--yellow", "1", "--ok", "--zaphod", "2", "--zaphod", "3", "--yellow", "4", mode = ArgParser.Mode.POSIX ,skippingUnrecognizedArgs = true)
+        ).xyz shouldBe listOf("--xray:0", "--yellow:1", "--zaphod:2", "--zaphod:3", "--yellow:4")
+        // here can ignore --ok without argument.
+
+        // Test with value as separate arg
+        Args2(
+            parserOf("--xray", "0", "--yellow", "1", "-o", "--zaphod", "2", "--zaphod", "3", "--yellow", "4", mode = ArgParser.Mode.POSIX ,skippingUnrecognizedArgs = true)
+        ).xyz shouldBe listOf("--xray:0", "--yellow:1", "--zaphod:2", "--zaphod:3", "--yellow:4")
+        // here can ignore --ok without argument.
+
+        Args2(
+            parserOf("--xray", "0", "--yellow", "1", "--ok", "well", "--zaphod", "2", "--zaphod", "3", "--yellow", "4", mode = ArgParser.Mode.POSIX ,skippingUnrecognizedArgs = true)
+        ).xyz shouldBe listOf("--xray:0", "--yellow:1", "--zaphod:2", "--zaphod:3", "--yellow:4")
+        // here can ignore --ok with single argument.
+
+        Args2(
+            parserOf("--xray", "0", "--yellow", "1", "-o", "well", "--zaphod", "2", "--zaphod", "3", "--yellow", "4", mode = ArgParser.Mode.POSIX ,skippingUnrecognizedArgs = true)
+        ).xyz shouldBe listOf("--xray:0", "--yellow:1", "--zaphod:2", "--zaphod:3", "--yellow:4")
+        // here can ignore --ok with single argument.
+
+        // only eat --ok and well, leaving fine as an UnexpectedPositionalArgument.
+        shouldThrow<UnexpectedPositionalArgumentException> {
+            Args3(
+                parserOf("--xray", "0", "--yellow", "1", "--ok", "well", "fine", mode = ArgParser.Mode.POSIX, skippingUnrecognizedArgs = true)
+            ).xyz
+        }
+    }
+
+    test("Skip unrecognized args GNU") {
         //        val parser = parserOf(skippingUnrecognizedArgs = true)
 
         class Args(parser: ArgParser) {
@@ -84,6 +140,7 @@ class ArgParserTest : FunSpec({
             parserOf("--xray", "0", "--yellow", "1", "-o", "well", "fine", "--zaphod", "2", "--zaphod", "3", "--yellow", "4", skippingUnrecognizedArgs = true)
         ).xyz shouldBe listOf("--xray:0", "--yellow:1", "--zaphod:2", "--zaphod:3", "--yellow:4")
         // here can ignore -o with multiple argument.
+
     }
 
     test("Do not tolerate unrecognized args") {
