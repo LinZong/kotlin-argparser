@@ -51,9 +51,10 @@ class ArgParserTest : FunSpec({
                 help = TEST_HELP
             ) {
                 value.orElse { mutableListOf<String>() }.apply {
-                    add("$optionName:${arguments.size}")
+                    add("$optionName:${arguments.first()}")
                 }
             }
+            val remain by parser.positional("Remaining positional arg1")
         }
 
         // Test with value as separate arg
@@ -74,16 +75,17 @@ class ArgParserTest : FunSpec({
         // here can ignore --ok with single argument.
 
         Args2(
-            parserOf("--xray", "0", "--yellow", "1", "-o", "well", "--zaphod", "2", "--zaphod", "3", "--yellow", "4", mode = ArgParser.Mode.POSIX ,skippingUnrecognizedArgs = true)
+            parserOf("--xray", "0", "--yellow", "1", "-o", "well", "fine", "--zaphod", "2", "--zaphod", "3", "--yellow", "4", mode = ArgParser.Mode.POSIX ,skippingUnrecognizedArgs = true)
         ).xyz shouldBe listOf("--xray:0", "--yellow:1", "--zaphod:2", "--zaphod:3", "--yellow:4")
-        // here can ignore --ok with single argument.
+        // here can ignore --ok with 2 arguments.
 
-        // only eat --ok and well, leaving fine as an UnexpectedPositionalArgument.
-        shouldThrow<UnexpectedPositionalArgumentException> {
-            Args3(
-                parserOf("--xray", "0", "--yellow", "1", "--ok", "well", "fine", mode = ArgParser.Mode.POSIX, skippingUnrecognizedArgs = true)
-            ).xyz
-        }
+        // eat --ok well
+
+        val arg3 = Args3(
+            parserOf("--xray", "0", "--yellow", "1", "--ok", "well", "fine", mode = ArgParser.Mode.POSIX, skippingUnrecognizedArgs = true)
+        )
+        arg3.xyz shouldBe listOf("--xray:0", "--yellow:1")
+        arg3.remain shouldBe "fine"
     }
 
     test("Skip unrecognized args GNU") {

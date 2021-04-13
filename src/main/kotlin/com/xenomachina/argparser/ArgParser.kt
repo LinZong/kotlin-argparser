@@ -501,9 +501,9 @@ class ArgParser(
                         break@optionLoop
                     }
                     arg.startsWith("--") ->
-                        parseLongOpt(i, args)
+                        parseLongOpt(i, args, positionalArguments)
                     arg.startsWith("-") ->
-                        parseShortOpts(i, args)
+                        parseShortOpts(i, args, positionalArguments)
                     else -> {
                         positionalArguments.add(arg)
                         when (mode) {
@@ -526,6 +526,10 @@ class ArgParser(
             inParse = false
         }
     }
+
+    private fun minSizeOfPositionalArgs() = (positionalDelegates.map {
+        if (it.second) 0 else it.first.sizeRange.first
+    }.sum()).coerceAtLeast(0)
 
     private fun parsePositionalArguments(args: List<String>) {
         var lastValueName: String? = null
@@ -557,9 +561,10 @@ class ArgParser(
     /**
      * @param index index into args, starting at a long option, eg: "--verbose"
      * @param args array of command-line arguments
+     * @param consumedPositionalArgs consumed positional arguments for a measurement when eating undeclared args.
      * @return number of arguments that have been processed
      */
-    private fun parseLongOpt(index: Int, args: Array<out String>): Int {
+    private fun parseLongOpt(index: Int, args: Array<out String>, consumedPositionalArgs: List<String>): Int {
         val name: String
         val firstArg: String?
         val m = NAME_EQUALS_VALUE_REGEX.matchEntire(args[index])
@@ -576,7 +581,7 @@ class ArgParser(
             if (!skippingUnrecognizedArgs) {
                 throw UnrecognizedOptionException(name)
             } else {
-                eatUnrecognizedArgs(firstArg, index, args)
+                eatUnrecognizedArgs(firstArg, index, args, consumedPositionalArgs.size)
             }
         } else {
             var consumedArgs = delegate.parseOption(name, firstArg, index + 1, args)
@@ -593,9 +598,10 @@ class ArgParser(
     /**
      * @param index index into args, starting at a set of short options, eg: "-abXv"
      * @param args array of command-line arguments
+     * @param consumedPositionalArgs consumed positional arguments for a measurement when eating undeclared args.
      * @return number of arguments that have been processed
      */
-    private fun parseShortOpts(index: Int, args: Array<out String>): Int {
+    private fun parseShortOpts(index: Int, args: Array<out String>, consumedPositionalArgs: List<String>): Int {
         val opts = args[index]
         var optIndex = 1
         while (optIndex < opts.length) {
@@ -609,7 +615,7 @@ class ArgParser(
                 if (!skippingUnrecognizedArgs) {
                     throw UnrecognizedOptionException(optName)
                 } else {
-                    return eatUnrecognizedArgs(firstArg, index, args)
+                    return eatUnrecognizedArgs(firstArg, index, args, consumedPositionalArgs.size)
                 }
             } else {
                 val consumed = delegate.parseOption(optName, firstArg, index + 1, args)
@@ -631,9 +637,10 @@ class ArgParser(
      * @param firstArg value of current parsing ArgName, may be null.
      * @param index current parsing index (related to args)
      * @param args arg array to parse.
+     * @param consumedPositionalArgCount counts of consumed positional arguments for a precious measurement when eating undeclared args in [Mode.GNU].
      * @return consumed args count.
      */
-    private fun eatUnrecognizedArgs(firstArg: String?, index: Int, args: Array<out String>): Int {
+    private fun eatUnrecognizedArgs(firstArg: String?, index: Int, args: Array<out String>, consumedPositionalArgCount: Int): Int {
         /**
          * since we don't know if it's a flagging, storing or else.
          * we can only eat this unrecognized option and potential 'values'
@@ -647,25 +654,62 @@ class ArgParser(
         if (index + 1 !in args.indices) {
             return 1
         }
-        val next = args[index + 1]
-        return if (next.startsWith("-")) {
-            // maybe another option, do not eat it.
-            1
-        } else {
-            when (mode) {
-                // options must before positional argument, so we cannot eat more than one values.
-                Mode.POSIX -> 2
-                // options may appear after positional argument, so eat values until next options.
-                Mode.GNU -> {
-                    var values = 0
-                    for (i in index + 1 until args.size) {
-                        if (args[i].startsWith("-")) {
-                            break
-                        }
-                        values++
-                    }
-                    return 1 + values
+
+        var values = 0
+        for (i in index + 1 until args.size) {
+            if (args[i].startsWith("-")) {
+                break
+            }
+            values++
+        }
+        val reachToEnd = values == (args.size - index - 1)
+        val minSizeOfPositionalArgs = minSizeOfPositionalArgs()
+        val remainingPositionalArgs = minSizeOfPositionalArgs - consumedPositionalArgCount
+        if (remainingPositionalArgs <= 0) {
+            // consuming all values blindly
+            return 1 + values
+        }
+        when (mode) {
+            // options must before positional arguments, so we can eat values until next option
+            // or leaving enough positional args if no one starts with '--' from [index+1].
+            Mode.POSIX -> {
+                if (reachToEnd) {
+                    // no one starts with '--' from [index+1]
+                    // keep potential positional args
+                    return (1 + values - remainingPositionalArgs).coerceAtLeast(1)
                 }
+                // consume args till next option.
+                return 1 + values
+            }
+            // options may appear after positional argument,
+            // but here we actually don't know whether positional args are consumed or not,
+            // we should be more careful to take a precious consuming.
+            Mode.GNU -> {
+                // try our best to keep enough positional args.
+                var minPositionalArgIndex = 0
+                var meetPositionalArgs = 0
+                var revIndex = args.size - 1
+                var haveEnoughPositionalArgs = false
+                while (revIndex > index) {
+                    if (args[revIndex].startsWith("-")) {
+                        revIndex--
+                        continue
+                    }
+                    meetPositionalArgs++
+                    minPositionalArgIndex = revIndex
+                    if (meetPositionalArgs == remainingPositionalArgs) {
+                        haveEnoughPositionalArgs = true
+                        break
+                    }
+                    revIndex--
+                }
+                if (haveEnoughPositionalArgs) {
+                    // the nearest positional arg is laid in [minPositionalArgIndex], so we drop [index,minPositionalArgIndex-1]
+                    return (minPositionalArgIndex - index)
+                }
+                // not enough positional args, error must be thrown in [parsePositionalArguments].
+                // here we just drop undeclared arg itself (act as a flagging arg).
+                return 1
             }
         }
     }
