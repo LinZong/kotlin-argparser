@@ -669,20 +669,21 @@ class ArgParser(
             // consuming all values blindly
             return 1 + values
         }
+        if (reachToEnd) {
+            // no one starts with '--' from [index+1]
+            // keep potential positional args.
+            // both GNU and POSIX can use this rule.
+            return (1 + values - remainingPositionalArgs).coerceAtLeast(1)
+        }
+        // not reach to end, and still have remaining positional args.
         when (mode) {
-            // options must before positional arguments, so we can eat values until next option
-            // or leaving enough positional args if no one starts with '--' from [index+1].
             Mode.POSIX -> {
-                if (reachToEnd) {
-                    // no one starts with '--' from [index+1]
-                    // keep potential positional args
-                    return (1 + values - remainingPositionalArgs).coerceAtLeast(1)
-                }
-                // consume args till next option.
+                // option exists, so consume args till next option.
+                // because options must appear before positional args.
                 return 1 + values
             }
             // options may appear after positional argument,
-            // but here we actually don't know whether positional args are consumed or not,
+            // but here we actually don't know whether remaining positional args are skipped by [values] or not.
             // we should be more careful to take a precious consuming.
             Mode.GNU -> {
                 // try our best to keep enough positional args.

@@ -212,8 +212,8 @@ if (System.env.CI != "true") {
     //////////////////////////////////////////////////////////////////////////////
 
     signing {
-        useGpgCmd()
-        sign configurations.archives
+//        useGpgCmd()
+//        sign configurations.archives
     }
 
     def ossrhUsernameOrEmpty = getRepositoryUsername()
@@ -222,7 +222,7 @@ if (System.env.CI != "true") {
     uploadArchives {
         repositories {
             mavenDeployer {
-                beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+//                beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
 
                 repository(url: getReleaseRepositoryUrl()) {
                     authentication(userName: ossrhUsernameOrEmpty, password: ossrhPasswordOrEmpty)
